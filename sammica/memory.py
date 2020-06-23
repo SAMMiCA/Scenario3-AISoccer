@@ -1,7 +1,6 @@
 import random
 import numpy as np
 from collections import deque
-from sammica import frame_buffer, state_buffer, solution_buffer, reward_buffer, action_buffer, buffer_size
 
 class memory():
     def __init__(self, maxsize):
@@ -90,3 +89,10 @@ class ReplayBuffer():
 
     def collect(self):
         return self.sample(-1)
+        
+buffer_size = 1e6
+frame_buffer = memory(buffer_size + 1)
+state_buffer = memory(buffer_size)
+solution_buffer = memory(buffer_size)
+action_buffer = memory(buffer_size)
+reward_buffer = memory(buffer_size)

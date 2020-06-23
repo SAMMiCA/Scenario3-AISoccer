@@ -15,3 +15,4 @@ class perceptionSystem():
     def get(self, frame):
         state = None # self.model(frame)
         return state
+perception : perceptionSystem = perceptionSystem()

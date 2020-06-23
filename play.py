@@ -43,7 +43,7 @@ class player(Participant):
 
         speeds = []
         for robot_id, action in enumerate(actions):
-            speeds.append(action2speed(action))
+            speeds += action2speed(action)
         self.set_speeds(speeds)
 
     # def finish(self):

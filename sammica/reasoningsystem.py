@@ -15,3 +15,4 @@ class reasoningSystem():
     def get(self, frame, state):
         solution = None # self.model(frame, state)
         return solution
+reasoning : reasoningSystem = reasoningSystem()
