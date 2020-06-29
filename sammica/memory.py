@@ -5,14 +5,14 @@ from collections import deque
 class memory():
     def __init__(self, maxsize):
         self.memory = deque()
-        self.maxsize = maxsize
+        self.buffer_size = maxsize
         self.count = 0
 
     def __len__(self):
         return len(self.memory)
 
     def push(self, data):
-        if self.count < self.maxsize:
+        if self.count < self.buffer_size:
             self.memory.append(data)
             self.count += 1
         else :
@@ -24,23 +24,30 @@ class memory():
         self.count = 0
 
 class ReplayBuffer():
-    def __init__(self):
-        self.buffer_list = [frame_buffer, reward_buffer, action_buffer] # , state_buffer, solution_buffer
+    def __init__(self, buffer_size):
+        self.frame_buffer = memory(buffer_size + 1)
+        self.state_buffer = memory(buffer_size)
+        self.solution_buffer = memory(buffer_size)
+        self.action_buffer = memory(buffer_size)
+        self.reward_buffer = memory(buffer_size)
+        self.buffer_list = ['frame', 'reward', 'action']
 
     def __len__(self):
-        return len(reward_buffer)
+        return len(self.reward_buffer)
 
     def clear(self):
         for buffer in self.buffer_list :
-            buffer.clear()
+            tmp_buffer_obj = getattr(self, buffer + '_buffer')
+            if hasattr(tmp_buffer_obj, 'clear') :
+                tmp_buffer_obj.clear()
 
     def _encode_sample(self, idxes):
         obses_t, actions, rewards, obses_tp1, dones = [], [], [], [], []
         for i in idxes:
-            obs_t = frame_buffer.memory[i]
-            action = action_buffer.memory[i]
-            reward = reward_buffer.memory[i]
-            obs_tp1 = frame_buffer.memory[i + 1]
+            obs_t = self.frame_buffer.memory[i]
+            action = self.action_buffer.memory[i]
+            reward = self.reward_buffer.memory[i]
+            obs_tp1 = self.frame_buffer.memory[i + 1]
             # done =
 
             obses_t.append(np.array(obs_t, copy=False))
@@ -54,7 +61,7 @@ class ReplayBuffer():
         return [random.randint(0, len(self)) for _ in range(batch_size)]
 
     def make_latest_index(self, batch_size):
-        idx = [(len(self) - i) % buffer_size for i in range(batch_size)]
+        idx = [(len(self) - i) % self.reward_buffer.buffer_size for i in range(batch_size)]
         np.random.shuffle(idx)
         return idx
 
@@ -89,10 +96,4 @@ class ReplayBuffer():
 
     def collect(self):
         return self.sample(-1)
-        
-buffer_size = 1e6
-frame_buffer = memory(buffer_size + 1)
-state_buffer = memory(buffer_size)
-solution_buffer = memory(buffer_size)
-action_buffer = memory(buffer_size)
-reward_buffer = memory(buffer_size)
+

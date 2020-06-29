@@ -1,7 +1,5 @@
 class perceptionSystem():
-    def __init__(self):
-        pass
-    def init(self, info, training):
+    def __init__(self, info, training):
         self.info = info
         self.training = training
         self.model = None
@@ -15,4 +13,4 @@ class perceptionSystem():
     def get(self, frame):
         state = None # self.model(frame)
         return state
-perception : perceptionSystem = perceptionSystem()
+

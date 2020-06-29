@@ -1,7 +1,3 @@
-from .memory import ReplayBuffer
-from .perceptionsystem import perception
-from .reasoningsystem import reasoning
-
 KICK = 0
 PASS = 1
 
@@ -14,39 +10,29 @@ def action2speed(action_key):
         return [0, 0, 0, 0, 0]
 
 class learningSystem():
-    def __init__(self):
-        pass
-        
-    def init(self, info, training):
+    def __init__(self, info, training):
         self.info = info
-        self.replay_buffer = ReplayBuffer()
         self.training = training
+
         self.batch_size = 1e1
         self.min_replay_buffer_len = 1e2# batch_size * max_episode_len
         #############################################
         # self.trainers = [model for _ in range(info['number_of_robots'])]
         #############################################
 
-    def update(self, frame, solution = None):
+    def update(self, frame, replay_buffer, solution = None):
         if self.training :
-            if len(self.replay_buffer) < self.min_replay_buffer_len :
-                return self.get_action(frame)
+            if len(replay_buffer) < self.min_replay_buffer_len :
+                return self.get(frame, solution)
             #############################################
             # Training
-            batch = self.replay_buffer.sample(int(self.batch_size)) # return [[obs], [act], [reward], [obs_n]]
+            batch = replay_buffer.sample(int(self.batch_size)) # return [[obs], [act], [reward], [obs_n]]
             # all_experience = self.replay_buffer.collect()
 
-        robotActions = self.get_action(frame)
+        robotActions = self.get(frame)
         #############################################
         return robotActions # [KICK, PASS, ...]
 
     def get(self, received_frame, solution) :
         robotActions = [KICK, KICK, KICK, KICK, KICK] #[agent(received_frame, solution) for agent in self.trainers]
         return robotActions
-
-    def get_action(self, received_frame):
-        state = perception.get(received_frame)
-        solution = reasoning.get(received_frame, state)
-        return self.get(received_frame, solution)
-
-learning : learningSystem = learningSystem()

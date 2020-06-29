@@ -11,35 +11,41 @@ except ImportError as err:
     print('player_skeleton: \'participant\' module cannot be imported:', err)
     raise
 
-from sammica import frame_buffer, state_buffer, solution_buffer, action_buffer, reward_buffer
-from sammica import perception, reasoning, learning
-from sammica import get_reward, action2speed
+from sammica import memory, ReplayBuffer
+from sammica import perceptionSystem, reasoningSystem, learningSystem
+from sammica import action2speed
+from sammica.rewards import get_reward
 
-TRAINING = False
+TRAINING = True
 
 class player(Participant):
     def init(self, info):
         self.info = info
+        self.perception = perceptionSystem(info, TRAINING)
+        self.reasoning = reasoningSystem(info, TRAINING)
+        self.learning = learningSystem(info, TRAINING)
+
         if TRAINING :
-            perception.init(info, TRAINING)
-            reasoning.init(info, TRAINING)
-            learning.init(info, TRAINING)
+            buffer_size = 1e6
+            self.replayBuffer = ReplayBuffer(buffer_size)
 
     def update(self, frame):
         if TRAINING :
-            if frame_buffer.__len__ > 0 :
-                reward_buffer.push(get_reward(frame))
-            frame_buffer.push(frame)
+            if len(self.replayBuffer.frame_buffer) > 1 :
+                self.replayBuffer.reward_buffer.push(get_reward(frame, self.replayBuffer))
+            self.replayBuffer.frame_buffer.push(frame)
 
-            state = perception.update(frame)
-            solution = reasoning.update(frame, state)
-            actions = learning.update(frame, solution)
+            state = self.perception.update(frame)
+            solution = self.reasoning.update(frame, state)
+            actions = self.learning.update(frame, self.replayBuffer, solution)
 
-            state_buffer.push(state)
-            solution_buffer.push(solution)
-            action_buffer.push(actions)
-        # else:
-        actions = learning.get_action(frame)
+            self.replayBuffer.state_buffer.push(state)
+            self.replayBuffer.solution_buffer.push(solution)
+            self.replayBuffer.action_buffer.push(actions)
+        else:
+            state = self.perception.get(frame)
+            solution = self.reasoning.get(frame, state)
+            actions = self.learning.get(frame, solution)
 
         speeds = []
         for robot_id, action in enumerate(actions):

@@ -1,7 +1,5 @@
 class reasoningSystem():
-    def __init__(self):
-        pass
-    def init(self, info, training):
+    def __init__(self, info, training):
         self.info = info
         self.training = training
         self.model = None
@@ -15,4 +13,4 @@ class reasoningSystem():
     def get(self, frame, state):
         solution = None # self.model(frame, state)
         return solution
-reasoning : reasoningSystem = reasoningSystem()
+
