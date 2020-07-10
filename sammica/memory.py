@@ -58,7 +58,7 @@ class ReplayBuffer():
         return np.array(obses_t), np.array(actions), np.array(rewards), np.array(obses_tp1)# , np.array(dones)
 
     def make_index(self, batch_size):
-        return [random.randint(0, len(self)) for _ in range(batch_size)]
+        return [random.randint(0, len(self) - 1) for _ in range(batch_size)]
 
     def make_latest_index(self, batch_size):
         idx = [(len(self) - i) % self.reward_buffer.buffer_size for i in range(batch_size)]
@@ -96,4 +96,3 @@ class ReplayBuffer():
 
     def collect(self):
         return self.sample(-1)
-

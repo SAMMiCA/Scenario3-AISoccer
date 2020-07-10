@@ -29,7 +29,7 @@ class learningSystem():
             batch = replay_buffer.sample(int(self.batch_size)) # return [[obs], [act], [reward], [obs_n]]
             # all_experience = self.replay_buffer.collect()
 
-        robotActions = self.get(frame)
+        robotActions = self.get(frame, solution)
         #############################################
         return robotActions # [KICK, PASS, ...]
 
