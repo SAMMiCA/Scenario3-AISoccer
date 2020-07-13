@@ -397,7 +397,6 @@ class player(Participant):
         self.t_start = time.time()
         self.new_episode = True # start of a new episode (used for replay buffer)
         self.start_saving_comm = False
-        self.count = 0
 
         if arglist.graph:
             self.printConsole("Setting up graph writer!")
@@ -496,7 +495,6 @@ class player(Participant):
                 for a in self.agent_rewards:
                     a.append(0)
                 self.agent_info.append([[]])
-                self.count += 1
             else:
                 self.new_episode=False
 
@@ -536,14 +534,8 @@ class player(Participant):
                 # save model, display training output
                 if done and (len(self.episode_rewards) % arglist.save_rate == 0):
                     U.save_state(arglist.save_dir, saver=self.saver)
-                    # print statement depends on whether or not there are adversaries
-                    if self.num_adversaries == 0:
-                        self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
-                            self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]), round(time.time()-self.t_start, 3)))
-                    else:
-                        self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, agent episode reward: {}, time: {}".format(
-                            self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]),
-                            [np.mean(rew[-arglist.save_rate:]) for rew in self.agent_rewards], round(time.time()-self.t_start, 3)))
+                    self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
+                        self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]), round(time.time()-self.t_start, 3)))
                     self.t_start = time.time()
                     # Keep track of final episode reward
                     self.final_ep_rewards.append(np.mean(self.episode_rewards[-arglist.save_rate:]))
