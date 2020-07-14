@@ -300,55 +300,6 @@ class player(Participant):
 
         return np.array([state])
 
-    def get_rew(self, frame):
-        reward = []
-
-        #goalkeeper - don't leave the penalty area
-        goalkeeper = frame.coordinates[MY_TEAM][0]
-        if (goalkeeper[ACTIVE]) :
-            if (goalkeeper[X] >= -self.info['field'][X]/2) and (goalkeeper[X] <= -self.info['field'][X]/2 + self.info['penalty_area'][X]) and (abs(goalkeeper[Y]) <= self.info['penalty_area'][Y]/2):
-                reward.append(0.5)
-            else:
-                reward.append(-0.5)
-        else:
-            reward.append(0)
-
-        #defenders - goto certain location
-        defender_1 = frame.coordinates[MY_TEAM][1]
-        defender_2 = frame.coordinates[MY_TEAM][2]
-
-        d1g = np.array([2, 0])
-        d2g = np.array([-1, 1.5])
-
-        if (defender_1[ACTIVE]):
-            reward.append(1 - 0.5*np.linalg.norm(d1g - defender_1[X:Z]))
-        else:
-            reward.append(0)
-
-        if (defender_2[ACTIVE]):
-            reward.append(1 - 0.5*np.linalg.norm(d2g - defender_2[X:Z]))
-        else:
-            reward.append(0)
-
-        #attackers - 1: follow ball, 2: follow an enemy
-        attacker_1 = frame.coordinates[MY_TEAM][3]
-        attacker_2 = frame.coordinates[MY_TEAM][4]
-
-        ball = np.array(frame.coordinates[BALL][X:Z])
-        opponent = np.array(frame.coordinates[OP_TEAM][3][X:Z])
-
-        if (attacker_1[ACTIVE]):
-            reward.append(1 - 0.5*np.linalg.norm(ball - attacker_1[X:Z]))
-        else:
-            reward.append(0)
-
-        if (attacker_2[ACTIVE]):
-            reward.append(1 - 0.5*np.linalg.norm(opponent - attacker_2[X:Z]))
-        else:
-            reward.append(0)
-
-        return np.array(reward)
-
     def init(self, info):
         self.info = info
         self.perception = perceptionSystem(info, TRAINING)
@@ -433,7 +384,8 @@ class player(Participant):
 
         if TRAINING :
             if len(self.replayBuffer.frame_buffer) > 0 :
-                self.replayBuffer.reward_buffer.push(get_reward(frame, self.replayBuffer))
+                rew_n = get_reward(self.info, frame, self.replayBuffer)
+                self.replayBuffer.reward_buffer.push(rew_n)
             self.replayBuffer.frame_buffer.push(frame)
 
             state = self.perception.update(frame)
@@ -459,10 +411,7 @@ class player(Participant):
 
         if self.first:
             self.first = False
-            rew_n = 'init'
         else:
-            rew_n = self.get_rew(frame)
-
             # collect experience
             for i, agent in enumerate(self.trainers):
                 # do this every iteration
