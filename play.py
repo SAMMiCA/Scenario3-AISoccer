@@ -76,7 +76,7 @@ def parse_args():
     parser.add_argument("--commit_num", type=str, default="0", help="commit number?")
     # Environment
     # parser.add_argument("--scenario", type=str, default="simple_", help="name of the scenario script")
-    parser.add_argument("--max-episode-len", type=int, default=100, help="maximum episode length")
+    parser.add_argument("--max-episode-len", type=int, default=500, help="maximum episode length")
     parser.add_argument("--num-episodes", type=int, default=60000, help="number of episodes")
     parser.add_argument("--num-adversaries", type=int, default=0, help="number of adversaries")
     parser.add_argument("--good-policy", type=str, default="maddpg", help="policy for good agents")
@@ -84,9 +84,9 @@ def parse_args():
     # Core training parameters
     parser.add_argument("--lr", type=float, default=1e-2, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=64, help="number of episodes to optimize at the same time")
+    parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
     parser.add_argument("--seed", type=int, default=1, help="number of episodes to optimize at the same time")
-    parser.add_argument("--num-units", type=int, default=64, help="number of units in the mlp")
+    parser.add_argument("--num-units", type=int, default=128, help="number of units in the mlp")
     # parser.add_argument("--update-freq", type=int, default=100, help="number of timesteps trainer should be updated ")
     parser.add_argument("--no-comm", action="store_true", default=False) # for analysis purposes
     parser.add_argument("--critic-lstm", action="store_true", default=True)
@@ -100,7 +100,7 @@ def parse_args():
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
     parser.add_argument("--save-dir", type=str, default="../../examples/ai28_player/saved_policy/", help="directory in which training state and model should be saved")
-    parser.add_argument("--save-rate", type=int, default=1000, help="save model once every time this many episodes are completed")
+    parser.add_argument("--save-rate", type=int, default=200, help="save model once every time this many episodes are completed")
     parser.add_argument("--load-dir", type=str, default="./saved_policy/", help="directory in which training state and model are loaded")
     parser.add_argument("--test-actor-q", action="store_true", default=False)
     # Evaluation
@@ -305,30 +305,47 @@ class player(Participant):
 
         #goalkeeper - don't leave the penalty area
         goalkeeper = frame.coordinates[MY_TEAM][0]
-        if (goalkeeper[X] >= -self.info['field'][X]/2) and (goalkeeper[X] <= -self.info['field'][X]/2 + self.info['penalty_area'][X]) and (abs(goalkeeper[Y]) <= self.info['penalty_area'][Y]/2):
-            reward.append(0)
+        if (goalkeeper[ACTIVE]) :
+            if (goalkeeper[X] >= -self.info['field'][X]/2) and (goalkeeper[X] <= -self.info['field'][X]/2 + self.info['penalty_area'][X]) and (abs(goalkeeper[Y]) <= self.info['penalty_area'][Y]/2):
+                reward.append(0.5)
+            else:
+                reward.append(-0.5)
         else:
-            reward.append(-1)
+            reward.append(0)
 
         #defenders - goto certain location
-        defender_1 = frame.coordinates[MY_TEAM][1][X:Z]
-        defender_2 = frame.coordinates[MY_TEAM][2][X:Z]
+        defender_1 = frame.coordinates[MY_TEAM][1]
+        defender_2 = frame.coordinates[MY_TEAM][2]
 
         d1g = np.array([2, 0])
         d2g = np.array([-1, 1.5])
 
-        reward.append(1 - 0.5*np.linalg.norm(d1g - defender_1))
-        reward.append(1 - 0.5*np.linalg.norm(d2g - defender_2))
+        if (defender_1[ACTIVE]):
+            reward.append(1 - 0.5*np.linalg.norm(d1g - defender_1[X:Z]))
+        else:
+            reward.append(0)
+
+        if (defender_2[ACTIVE]):
+            reward.append(1 - 0.5*np.linalg.norm(d2g - defender_2[X:Z]))
+        else:
+            reward.append(0)
 
         #attackers - 1: follow ball, 2: follow an enemy
-        attacker_1 = frame.coordinates[MY_TEAM][3][X:Z]
-        attacker_2 = frame.coordinates[MY_TEAM][4][X:Z]
+        attacker_1 = frame.coordinates[MY_TEAM][3]
+        attacker_2 = frame.coordinates[MY_TEAM][4]
 
         ball = np.array(frame.coordinates[BALL][X:Z])
         opponent = np.array(frame.coordinates[OP_TEAM][3][X:Z])
 
-        reward.append(1 - 0.5*np.linalg.norm(ball - attacker_1))
-        reward.append(1 - 0.5*np.linalg.norm(opponent - attacker_2))
+        if (attacker_1[ACTIVE]):
+            reward.append(1 - 0.5*np.linalg.norm(ball - attacker_1[X:Z]))
+        else:
+            reward.append(0)
+
+        if (attacker_2[ACTIVE]):
+            reward.append(1 - 0.5*np.linalg.norm(opponent - attacker_2[X:Z]))
+        else:
+            reward.append(0)
 
         return np.array(reward)
 
@@ -536,6 +553,12 @@ class player(Participant):
                     U.save_state(arglist.save_dir, saver=self.saver)
                     self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
                         self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]), round(time.time()-self.t_start, 3)))
+                    self.printConsole("Agent Rewards: GK {}, D1 {}, D2 {}, F1 {}, F2 {}".format(
+                        np.mean(self.agent_rewards[0][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[1][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[2][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[3][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[4][-arglist.save_rate:])))
                     self.t_start = time.time()
                     # Keep track of final episode reward
                     self.final_ep_rewards.append(np.mean(self.episode_rewards[-arglist.save_rate:]))
