@@ -57,12 +57,12 @@ def simple_reward(info, frame, tmp_prev_frame):
     opponent = np.array(frame.coordinates[OP_TEAM][3][X:Z])
 
     if (attacker_1[ACTIVE]):
-        reward.append(1 - 0.5*np.linalg.norm(ball - attacker_1[X:Z]))
+        reward.append(1 - 0.5*np.linalg.norm(opponent - attacker_1[X:Z]))
     else:
         reward.append(0)
 
     if (attacker_2[ACTIVE]):
-        reward.append(1 - 0.5*np.linalg.norm(opponent - attacker_2[X:Z]))
+        reward.append(1 - 0.5*np.linalg.norm(ball - attacker_2[X:Z]))
     else:
         reward.append(0)
 

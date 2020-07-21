@@ -1,5 +1,6 @@
 import numpy as np
 import pickle
+import os
 
 
 # For tracking information for each agent:
@@ -14,7 +15,7 @@ class InfoTracker:
     def __init__(self, agent_name,  arglist):
         self.agent_name = agent_name
         self.arglist = arglist
-        self.base_filename = "../experiments/tracker_information/{}_{}_".format(self.arglist.commit_num, self.agent_name)
+        self.base_filename = "../../examples/ai28_player/tracker_information/{}_{}_".format(self.arglist.commit_num, self.agent_name)
 
         keys = ["ag_reward", # every episode
                 "team_dist_reward", # every episode
@@ -25,7 +26,7 @@ class InfoTracker:
                 "reward_mean", # same
                 "target_q_next_mean", # same
                 "target_q_std", # same
-                "communication",
+                # "communication",
                 "position",
                 "goal"
                 ] # every episode
@@ -46,12 +47,13 @@ class InfoTracker:
         self.episode_information[kw].append(value)
 
     def save(self):
+        os.makedirs(os.path.dirname(self.base_filename), exist_ok=True)
         for k in self.final_information.keys():
             f = self.base_filename + k + ".pkl"
-            print("Saving at {}".format(f))
+            # print("Saving at {}".format(f))
             with open(f, "wb") as f:
                 pickle.dump(self.final_information[k], f)
-        print("Done saving everything")
+        # print("Done saving everything")
 
     def reset(self):
         for k in self.final_information.keys():
@@ -67,4 +69,3 @@ class InfoTracker:
 
     def average(self, kw):
         return np.mean(self.episode_information[kw])
-

@@ -84,19 +84,19 @@ def parse_args():
     # Core training parameters
     parser.add_argument("--lr", type=float, default=1e-2, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
+    parser.add_argument("--batch-size", type=int, default=64, help="number of episodes to optimize at the same time")
     parser.add_argument("--seed", type=int, default=1, help="number of episodes to optimize at the same time")
-    parser.add_argument("--num-units", type=int, default=128, help="number of units in the mlp")
+    parser.add_argument("--num-units", type=int, default=256, help="number of units in the mlp")
     # parser.add_argument("--update-freq", type=int, default=100, help="number of timesteps trainer should be updated ")
     parser.add_argument("--no-comm", action="store_true", default=False) # for analysis purposes
-    parser.add_argument("--critic-lstm", action="store_true", default=True)
-    parser.add_argument("--actor-lstm", action="store_true", default=True)
+    parser.add_argument("--critic-lstm", action="store_true", default=False)
+    parser.add_argument("--actor-lstm", action="store_true", default=False)
     parser.add_argument("--centralized-actor", action="store_true", default=False)
     parser.add_argument("--with-comm-budget", action="store_true", default=False)
     parser.add_argument("--analysis", type=str, default="", help="type of analysis") # time, pos, argmax
     parser.add_argument("--commit-num", type=str, default="", help="name of the experiment")
     parser.add_argument("--sync-sampling", action="store_true", default=False)
-    parser.add_argument("--tracking", action="store_true", default=False)
+    parser.add_argument("--tracking", action="store_true", default=True)
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
     parser.add_argument("--save-dir", type=str, default="../../examples/ai28_player/saved_policy/", help="directory in which training state and model should be saved")
@@ -104,14 +104,14 @@ def parse_args():
     parser.add_argument("--load-dir", type=str, default="./saved_policy/", help="directory in which training state and model are loaded")
     parser.add_argument("--test-actor-q", action="store_true", default=False)
     # Evaluation
-    parser.add_argument("--graph", action="store_true", default=False)
+    parser.add_argument("--graph", action="store_true", default=True)
     parser.add_argument("--restore", action="store_true", default=False)
     parser.add_argument("--metrics-filename", type=str, default="", help="name of metrics filename")
     parser.add_argument("--display", action="store_true", default=False)
     parser.add_argument("--benchmark", action="store_true", default=False)
     parser.add_argument("--benchmark-iters", type=int, default=100000, help="number of iterations run for benchmarking")
-    parser.add_argument("--benchmark-dir", type=str, default="./benchmark_files/", help="directory where benchmark data is saved")
-    parser.add_argument("--plots-dir", type=str, default="./learning_curves/", help="directory where plot data is saved")
+    parser.add_argument("--benchmark-dir", type=str, default="../../examples/ai28_player/benchmark_files/", help="directory where benchmark data is saved")
+    parser.add_argument("--plots-dir", type=str, default="../../examples/ai28_player/learning_curves/", help="directory where plot data is saved")
     arglist, _ = parser.parse_known_args()
     return arglist
 
@@ -150,8 +150,10 @@ def create_seed(seed):
 
 class player(Participant):
     def convert2action(self, action_n, coordinates):
+        one_hot_actions = []
         msg = []
         for id in range(self.num_agent):
+            one_hot_action = []
             agent_action = action_n[id][0]
             # parse the action array
             control = []
@@ -160,6 +162,8 @@ class player(Participant):
             for i in range(len(self.act_discrete)):
                 #separate discrete action sets to action numbers
                 act.append(np.argmax(agent_action[index:(index+self.act_discrete[i])]))
+                one_hot_action += [0 for j in range(self.act_discrete[i])]
+                one_hot_action[index+act[i]] = 1
                 index += self.act_discrete[i]
 
             # drive action number to actual wheel speeds
@@ -197,8 +201,9 @@ class player(Participant):
                 control += [0]
 
             msg += control
+            one_hot_actions.append([one_hot_action])
 
-        return msg
+        return msg, one_hot_actions
 
 
     def go_to(self, dx, dy, th, maxvel):
@@ -281,12 +286,12 @@ class player(Participant):
     def get_obs(self, frame):
         state = []
         for item in frame.coordinates[MY_TEAM]:
-            state += item[X:TH+1]
+            state += item[X:Y+1]
 
         for item in frame.coordinates[OP_TEAM]:
-            state += item[X:TH+1]
+            state += item[X:Y+1]
 
-        state += frame.coordinates[BALL]
+        state += frame.coordinates[BALL][X:Y+1]
 
         # x = np.array(x)/self.bound[X]
         # y = np.array(y)/self.bound[Y]
@@ -337,7 +342,7 @@ class player(Participant):
             create_seed(arglist.seed)
 
         # Create agent trainers
-        self.state_dim_n = self.num_agent * 4 * 2 + 3 # agent coordinates [x, y, z, th], ball coordinate [x, y, z]
+        self.state_dim_n = self.num_agent * 2 * 2 + 2 # agent coordinates [x, y, z, th], ball coordinate [x, y, z]
         self.obs_shape_n = [(self.state_dim_n,) for i in range(self.num_agent)]
 
         self.act_discrete = [9, 2, 2] # 0~8: stop + 8 directions, 0~1 kick, 0~1 jump
@@ -368,15 +373,13 @@ class player(Participant):
 
         if arglist.graph:
             self.printConsole("Setting up graph writer!")
-            self.writer = tf.summary.FileWriter("learning_curves/graph",sess.graph)
+            self.writer = tf.summary.FileWriter("../../examples/ai28_player/learning_curves/graph",self.sess.graph)
 
         # if arglist.analysis:
         #     self.printConsole("Starting analysis on {}...".format(arglist.analysis))
         #     if arglist.analysis != 'video':
         #         analyze.run_analysis(arglist, self.env, self.trainers)
         #     return # should be a single run
-
-        self.internal_counter = 0
 
     def update(self, frame):
         if not frame.end_of_frame:
@@ -400,13 +403,16 @@ class player(Participant):
             solution = self.reasoning.get(frame, state)
             actions = self.learning.get(frame, solution)
 
+
+        # Closing graph writer
+        if self.arglist.graph:
+            self.writer.close()
+
         arglist = self.arglist
         obs = self.get_obs(frame)
         obs_n = [obs for i in range(self.num_agent)]
         # done = True if frame.reset_reason == SCORE_MYTEAM or frame.reset_reason == SCORE_OPPONENT else False
-        done = True if self.internal_counter % 100 == 0 else False
-        if self.internal_counter % 100 == 0:
-            self.internal_counter = 0
+        done = True if frame.reset_reason == HALFTIME or frame.reset_reason == EPISODE_END else False
         done_n = [done for i in range(self.num_agent)]
 
         if self.first:
@@ -482,20 +488,24 @@ class player(Participant):
                 # update all trainers, if not in display or benchmark mode
                 loss = None
 
-                # get same episode sampling
-                if arglist.sync_sampling:
-                    inds = [random.randint(0, len(self.trainers[0].replay_buffer._storage)-1) for i in range(arglist.batch_size)]
-                else:
-                    inds = None
+                if done and (len(self.episode_rewards) % 10 == 0):
+                    self.printConsole("Episodes Seen: {}, entering training...".format(len(self.episode_rewards)))
+                    for i in range(150):
+                        # get same episode sampling
+                        if arglist.sync_sampling:
+                            inds = [random.randint(0, len(self.trainers[0].replay_buffer._storage)-1) for i in range(arglist.batch_size)]
+                        else:
+                            inds = None
 
-                for agent in self.trainers:
-                    # if arglist.lstm:
-                    #     agent.preupdate(inds=inds)
-                    # else:
-                    agent.preupdate(inds)
-                for agent in self.trainers:
-                    loss = agent.update(self.trainers, self.train_step)
-                    if loss is None: continue
+                        for agent in self.trainers:
+                            # if arglist.lstm:
+                            #     agent.preupdate(inds=inds)
+                            # else:
+                            agent.preupdate(inds)
+                        for agent in self.trainers:
+                            loss = agent.update(self.trainers)#, self.train_step)
+                            if loss is None: continue
+                    self.printConsole("Training round done")
 
                 # save model, display training output
                 if done and (len(self.episode_rewards) % arglist.save_rate == 0):
@@ -514,6 +524,10 @@ class player(Participant):
                     for rew in self.agent_rewards:
                         self.final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
 
+                    if self.arglist.tracking:
+                        for agent in self.trainers:
+                            agent.tracker.save()
+
 
         if arglist.actor_lstm:
             # get critic input states
@@ -524,7 +538,7 @@ class player(Participant):
 
         # get action
         self.action_n = [agent.action(obs) for agent, obs in zip(self.trainers, obs_n)]
-        message = self.convert2action(self.action_n, frame.coordinates)
+        message, self.action_n = self.convert2action(self.action_n, frame.coordinates)
         if arglist.critic_lstm:
             # get critic output states
             p_states = [self.p_in_c_n, self.p_in_h_n] if arglist.actor_lstm else []
@@ -541,19 +555,8 @@ class player(Participant):
         #     speeds += action2speed(action)
         self.set_speeds(message)
 
-        self.internal_counter += 1
-
     def finish(self):
         arglist = self.arglist
-        # saves final episode reward for plotting training curve later
-        # U.save_state(arglist.save_dir, saver=saver)
-        if arglist.tracking:
-            for agent in self.trainers:
-                agent.tracker.save()
-
-        # Closing graph writer
-        if arglist.graph:
-            self.writer.close()
 
         if not os.path.exists("rewards"):
             os.makedirs("rewards")

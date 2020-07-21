@@ -114,7 +114,7 @@ class _RMADDPGAgentTrainer(AgentTrainer):
             action = self.act(obs[None])
 
         action = action[0]
-        if self.args.tracking: self.tracker.record_information("communication", np.argmax(action[0][-2:]))
+        # if self.args.tracking: self.tracker.record_information("communication", np.argmax(action[0][-2:]))
         return action
 
     def experience(self,*args):
@@ -125,11 +125,11 @@ class _RMADDPGAgentTrainer(AgentTrainer):
     def preupdate(self, inds):
         self.replay_sample_index = inds
 
-    def update(self, agents, t):
+    def update(self, agents):#, t):
         if len(self.replay_buffer) < self.max_replay_buffer_len: # replay buffer is not large enough
             return
-        if not t % 100 == 0:  # only update every 100 steps
-            return
+        # if not t % 100 == 0:  # only update every 100 steps
+        #     return
 
         self.tracker.start()
 

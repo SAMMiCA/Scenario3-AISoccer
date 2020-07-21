@@ -3,6 +3,7 @@ import tensorflow as tf
 import maddpg.common.tf_util as U
 import pickle
 import matplotlib.pyplot as plt
+import os
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.collections import PolyCollection
 
@@ -29,6 +30,7 @@ class CommunicationTracker:
         self.communication_tracker["{}_communication".format(episode_num)] = np.array(self.episode_communication)
 
         # Save under filename
+        os.makedirs(os.path.dirname(self.filename), exist_ok=True)
         with open(self.filename, "wb") as f:
             pickle.dump(self.communication_tracker,f)
 
