@@ -166,7 +166,6 @@ class _RMADDPGAgentTrainer(AgentTrainer):
                 q_c_out.append(q_c_out_t)
                 q_h_out.append(q_h_out_t)
 
-
         # train q network
         num_sample = 1
         target_q = 0.0

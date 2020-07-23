@@ -32,7 +32,7 @@ import maddpg.architecture.utils as utils
 from maddpg.architecture.network import mlp_model, lstm_fc_model
 
 from gym import spaces
-from multiagent.multi_discrete import MultiDiscrete
+from maddpg.multi_discrete import MultiDiscrete
 
 TRAINING = True
 
@@ -84,7 +84,7 @@ def parse_args():
     # Core training parameters
     parser.add_argument("--lr", type=float, default=1e-2, help="learning rate for Adam optimizer")
     parser.add_argument("--gamma", type=float, default=0.95, help="discount factor")
-    parser.add_argument("--batch-size", type=int, default=64, help="number of episodes to optimize at the same time")
+    parser.add_argument("--batch-size", type=int, default=32, help="number of episodes to optimize at the same time")
     parser.add_argument("--seed", type=int, default=1, help="number of episodes to optimize at the same time")
     parser.add_argument("--num-units", type=int, default=256, help="number of units in the mlp")
     # parser.add_argument("--update-freq", type=int, default=100, help="number of timesteps trainer should be updated ")
@@ -100,7 +100,7 @@ def parse_args():
     # Checkpointing
     parser.add_argument("--exp-name", type=str, default=None, help="name of the experiment")
     parser.add_argument("--save-dir", type=str, default="../../examples/ai28_player/saved_policy/", help="directory in which training state and model should be saved")
-    parser.add_argument("--save-rate", type=int, default=200, help="save model once every time this many episodes are completed")
+    parser.add_argument("--save-rate", type=int, default=100, help="save model once every time this many episodes are completed")
     parser.add_argument("--load-dir", type=str, default="./saved_policy/", help="directory in which training state and model are loaded")
     parser.add_argument("--test-actor-q", action="store_true", default=False)
     # Evaluation
