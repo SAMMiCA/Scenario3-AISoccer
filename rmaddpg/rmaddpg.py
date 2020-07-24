@@ -1,12 +1,12 @@
 import numpy as np
 import random
 import tensorflow as tf
-import maddpg.common.tf_util as U
+from .misc import tf_util as U
 
-from maddpg.trainer.track_information import InfoTracker
-from maddpg.common.distributions import make_pdtype
-from maddpg import AgentTrainer
-from maddpg.trainer.replay_buffer_ import _ReplayBuffer
+from .misc.track_information import InfoTracker
+from .misc.distributions import make_pdtype
+from . import AgentTrainer
+from .replay_buffer_ import _ReplayBuffer
 
 def make_update_exp(vals, target_vals):
     polyak = 1.0 - 1e-2

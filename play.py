@@ -24,15 +24,12 @@ import math
 import time
 import pickle
 import random
-import maddpg.common.tf_util as U
-from maddpg.trainer.rmaddpg import _RMADDPGAgentTrainer
-import maddpg.architecture.analyze as analyze
-import maddpg.architecture.rewards as rewards
-import maddpg.architecture.utils as utils
-from maddpg.architecture.network import mlp_model, lstm_fc_model
+import rmaddpg.misc.tf_util as U
+from rmaddpg.rmaddpg import _RMADDPGAgentTrainer
+from rmaddpg.network import mlp_model, lstm_fc_model
 
 from gym import spaces
-from maddpg.multi_discrete import MultiDiscrete
+from rmaddpg.misc.multi_discrete import MultiDiscrete
 
 TRAINING = True
 
@@ -374,12 +371,6 @@ class player(Participant):
         if arglist.graph:
             self.printConsole("Setting up graph writer!")
             self.writer = tf.summary.FileWriter("../../examples/ai28_player/learning_curves/graph",self.sess.graph)
-
-        # if arglist.analysis:
-        #     self.printConsole("Starting analysis on {}...".format(arglist.analysis))
-        #     if arglist.analysis != 'video':
-        #         analyze.run_analysis(arglist, self.env, self.trainers)
-        #     return # should be a single run
 
     def update(self, frame):
         if not frame.end_of_frame:

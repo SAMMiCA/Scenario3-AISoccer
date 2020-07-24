@@ -1,8 +1,8 @@
 import tensorflow as tf
 import numpy as np
-import maddpg.common.tf_util as U
+from . import tf_util as U
 from tensorflow.python.ops import math_ops
-from maddpg.multi_discrete import MultiDiscrete
+from .multi_discrete import MultiDiscrete
 from tensorflow.python.ops import nn
 
 class Pd(object):
