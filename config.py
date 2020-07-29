@@ -4,6 +4,8 @@ def parse_args():
     parser = argparse.ArgumentParser("Reinforcement Learning experiments for multiagent environments")
     # Using CPU or GPU
     parser.add_argument("--use-cpu", action="store_true", default=False)
+    # Training or no
+    parser.add_argument("--training", action="store_true", default=True)
     # Output Filename
     parser.add_argument("--commit_num", type=str, default="0", help="commit number?")
     # Environment

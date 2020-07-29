@@ -14,7 +14,6 @@ except ImportError as err:
 
 from sammica import memory, ReplayBuffer
 from sammica import perceptionSystem, reasoningSystem, learningSystem
-from sammica import action2speed
 
 from aiwc_utils import go_to
 from rewards import get_reward
@@ -27,11 +26,8 @@ import pickle
 import random
 
 import sammica.misc.tf_util as U
-from sammica.rmaddpg import _RMADDPGAgentTrainer
 from sammica.network import mlp_model, lstm_fc_model
 from sammica.misc.multi_discrete import MultiDiscrete
-
-TRAINING = True
 
 # reset_reason
 NONE = 0
@@ -65,33 +61,33 @@ ACTIVE = 4
 TOUCH = 5
 BALL_POSSESSION = 6
 
-def get_trainers(num_agent, obs_shape_n, act_space_n, arglist):
-    trainers = []
-    trainer = _RMADDPGAgentTrainer
+def get_learners(num_agent, obs_shape_n, act_space_n, arglist):
+    learners = []
+    learner  = learningSystem
 
     for i in range(num_agent):
-        trainers.append(trainer(
+        learners.append(learner(
             "agent_%d" % i,  mlp_model, lstm_fc_model, obs_shape_n, act_space_n, i, arglist,
             local_q_func=(arglist.good_policy=='ddpg')))
-    return trainers
+    return learners
 
-def get_lstm_states(_type, trainers):
+def get_lstm_states(_type, learners):
     if _type == 'p':
-        return [agent.p_c for agent in trainers], [agent.p_h for agent in trainers]
+        return [agent.p_c for agent in learners], [agent.p_h for agent in learners]
     if _type == 'q':
-        return [agent.q_c for agent in trainers], [agent.q_h for agent in trainers]
+        return [agent.q_c for agent in learners], [agent.q_h for agent in learners]
     else:
         raise ValueError("unknown type")
 
-def update_critic_lstm(trainers, obs_n, action_n, p_states):
+def update_critic_lstm(learners, obs_n, action_n, p_states):
     obs_n = [o[None] for o in obs_n]
     action_n = [a[None] for a in action_n]
-    q_c_n = [trainer.q_c for trainer in trainers]
-    q_h_n = [trainer.q_h for trainer in trainers]
+    q_c_n = [learner.q_c for learner in learners]
+    q_h_n = [learner.q_h for learner in learners]
     p_c_n, p_h_n = p_states if p_states else [None, None]
 
-    for trainer in trainers:
-        q_val, (trainer.q_c, trainer.q_h) = trainer.q_debug['q_values'](*(obs_n + action_n + q_c_n + q_h_n))
+    for learner in learners:
+        q_val, (learner.q_c, learner.q_h) = learner.q_debug['q_values'](*(obs_n + action_n + q_c_n + q_h_n))
 
 def create_seed(seed):
     random.seed(seed)
@@ -179,24 +175,28 @@ class player(Participant):
 
     def init(self, info):
         self.info = info
-        self.perception = perceptionSystem(info, TRAINING)
-        self.reasoning = reasoningSystem(info, TRAINING)
-        self.learning = learningSystem(info, TRAINING)
 
+        self.arglist = parse_args()
+        arglist = self.arglist
+        if arglist.use_cpu:
+            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
+        # Initialize Perception Module
+        self.perception = perceptionSystem(info, arglist.training)
+
+        # Initialize Reasoning Module
+        self.reasoning = reasoningSystem(info, arglist.training)
+
+        # Initialize Learning Module
         self.num_agent = info['number_of_robots']
         self.max_linear_velocity = info['max_linear_velocity']
 
         x_lim = 0.5 * (info['field'][X] + info['goal_area'][X])
         y_lim = 0.5 * (info['field'][Y] + info['goal_area'][Y])
 
-        if TRAINING :
+        if arglist.training :
             buffer_size = 1e6
             self.replayBuffer = ReplayBuffer(buffer_size)
-
-        self.arglist = parse_args()
-        arglist = self.arglist
-        if arglist.use_cpu:
-            os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
         self.terminal = False
         self.first = True
@@ -213,13 +213,15 @@ class player(Participant):
         else:
             create_seed(arglist.seed)
 
-        # Create agent trainers
+        # Create agent learners
         self.state_dim_n = self.num_agent * 2 * 2 + 2 # agent coordinates [x, y, z, th], ball coordinate [x, y, z]
         self.obs_shape_n = [(self.state_dim_n,) for i in range(self.num_agent)]
 
         self.act_discrete = [9, 2, 2] # 0~8: stop + 8 directions, 0~1 kick, 0~1 jump
         self.act_space_n = [MultiDiscrete([[0, self.act_discrete[i] - 1] for i in range(len(self.act_discrete))]) for j in range(self.num_agent)]
-        self.trainers = get_trainers(self.num_agent, self.obs_shape_n, self.act_space_n, arglist)
+
+
+        self.learners = get_learners(self.num_agent, self.obs_shape_n, self.act_space_n, arglist)
         self.printConsole('Using {} agents'.format(arglist.good_policy))
 
         # Initialize
@@ -251,26 +253,6 @@ class player(Participant):
         if not frame.end_of_frame:
             return
 
-        if TRAINING :
-            if len(self.replayBuffer.frame_buffer) > 0 :
-                rew_agent = get_reward(self.info, frame, self.replayBuffer)
-                rew_n = np.array([sum(rew_agent)/5 for i in range(self.num_agent)])
-                self.replayBuffer.reward_buffer.push(rew_n)
-            self.replayBuffer.frame_buffer.push(frame)
-
-            state = self.perception.update(frame)
-            solution = self.reasoning.update(frame, state)
-            actions = self.learning.update(frame, self.replayBuffer, solution)
-
-            self.replayBuffer.state_buffer.push(state)
-            self.replayBuffer.solution_buffer.push(solution)
-            self.replayBuffer.action_buffer.push(actions)
-        else:
-            state = self.perception.get(frame)
-            solution = self.reasoning.get(frame, state)
-            actions = self.learning.get(frame, solution)
-
-
         # Closing graph writer
         if self.arglist.graph:
             self.writer.close()
@@ -278,148 +260,178 @@ class player(Participant):
         arglist = self.arglist
         obs = self.get_obs(frame)
         obs_n = [obs for i in range(self.num_agent)]
+
         # done = True if frame.reset_reason == SCORE_MYTEAM or frame.reset_reason == SCORE_OPPONENT else False
         done = True if frame.reset_reason == HALFTIME or frame.reset_reason == EPISODE_END else False
-        done_n = [done for i in range(self.num_agent)]
 
-        if self.first:
-            self.first = False
-        else:
-            # collect experience
-            for i, agent in enumerate(self.trainers):
-                # do this every iteration
-                if arglist.critic_lstm and arglist.actor_lstm:
-                    agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                    obs_n[i], done_n[i], # terminal,
-                                    self.p_in_c_n[i][0], self.p_in_h_n[i][0],
-                                    self.p_out_c_n[i][0], self.p_out_h_n[i][0],
-                                    self.q_in_c_n[i][0], self.q_in_h_n[i][0],
-                                    self.q_out_c_n[i][0], self.q_out_h_n[i][0], self.new_episode)
-                elif arglist.critic_lstm:
-                    agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                    obs_n[i], done_n[i], # terminal,
-                                    self.q_in_c_n[i][0], self.q_in_h_n[i][0],
-                                    self.q_out_c_n[i][0], self.q_out_h_n[i][0],self.new_episode)
-                elif arglist.actor_lstm:
-                    agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                    obs_n[i], done_n[i], # terminal,
-                                    self.p_in_c_n[i][0], self.p_in_h_n[i][0],
-                                    self.p_out_c_n[i][0], self.p_out_h_n[i][0],
-                                    self.new_episode)
+        if arglist.training:
+            if len(self.replayBuffer.frame_buffer) > 0:
+                rew_agent = get_reward(self.info, frame, self.replayBuffer)
+                rew_n = np.array([sum(rew_agent)/5 for i in range(self.num_agent)])
+                self.replayBuffer.reward_buffer.push(rew_n)
+            self.replayBuffer.frame_buffer.push(frame)
+
+            # Update perception module (if necessary)
+            state = self.perception.update(frame)
+
+            # Update reasoning module (if necessary)
+            solution = self.reasoning.update(frame, state)
+
+            # Update learning module
+            done_n = [done for i in range(self.num_agent)]
+
+            if self.first:
+                self.first = False
+            else:
+                # collect experience
+                for i, agent in enumerate(self.learners):
+                    # do this every iteration
+                    if arglist.critic_lstm and arglist.actor_lstm:
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
+                                        obs_n[i], done_n[i], # terminal,
+                                        self.p_in_c_n[i][0], self.p_in_h_n[i][0],
+                                        self.p_out_c_n[i][0], self.p_out_h_n[i][0],
+                                        self.q_in_c_n[i][0], self.q_in_h_n[i][0],
+                                        self.q_out_c_n[i][0], self.q_out_h_n[i][0], self.new_episode)
+                    elif arglist.critic_lstm:
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
+                                        obs_n[i], done_n[i], # terminal,
+                                        self.q_in_c_n[i][0], self.q_in_h_n[i][0],
+                                        self.q_out_c_n[i][0], self.q_out_h_n[i][0],self.new_episode)
+                    elif arglist.actor_lstm:
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
+                                        obs_n[i], done_n[i], # terminal,
+                                        self.p_in_c_n[i][0], self.p_in_h_n[i][0],
+                                        self.p_out_c_n[i][0], self.p_out_h_n[i][0],
+                                        self.new_episode)
+                    else:
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
+                                        obs_n[i], done_n[i], # terminal,
+                                        self.new_episode)
+
+                # Adding rewards
+                if arglist.tracking:
+                    for i, a in enumerate(self.learners):
+                        a.tracker.record_information("ag_reward", rew_agent[i])
+
+                for i, rew in enumerate(rew_agent):
+                    self.episode_rewards[-1] += rew/self.num_agent
+                    self.agent_rewards[i][-1] += rew
+
+                # If an episode was finished, reset internal values
+                if done:
+                    self.new_episode = True
+                    # reset learners
+                    if arglist.actor_lstm or arglist.critic_lstm:
+                        for agent in self.learners:
+                            agent.reset_lstm()
+                    if arglist.tracking:
+                        for agent in self.learners:
+                            agent.tracker.reset()
+                    self.episode_rewards.append(0)
+                    for a in self.agent_rewards:
+                        a.append(0)
+                    self.agent_info.append([[]])
                 else:
-                    agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                    obs_n[i], done_n[i], # terminal,
-                                    self.new_episode)
+                    self.new_episode=False
 
-            # Adding rewards
-            if arglist.tracking:
-                for i, a in enumerate(self.trainers):
-                    a.tracker.record_information("ag_reward", rew_agent[i])
+                # increment global step counter
+                self.train_step += 1
 
-            for i, rew in enumerate(rew_agent):
-                self.episode_rewards[-1] += rew/self.num_agent
-                self.agent_rewards[i][-1] += rew
+                # for benchmarking learned policies
+                if arglist.benchmark:
+                    for i, info in enumerate(info_n):
+                        self.agent_info[-1][i].append(info_n['n'])
+                    if self.train_step > arglist.benchmark_iters and done:
+                        file_name = arglist.benchmark_dir + arglist.exp_name + '.pkl'
+                        self.printConsole('Finished benchmarking, now saving...')
+                        with open(file_name, 'wb') as fp:
+                            pickle.dump(self.agent_info[:-1], fp)
+                        return
+                # otherwise training
+                else:
+                    # update all learners, if not in display or benchmark mode
+                    loss = None
 
+                    if done and (len(self.episode_rewards) % 10 == 0):
+                        self.printConsole("Episodes Seen: {}, entering training...".format(len(self.episode_rewards)))
+                        for i in range(150):
+                            # get same episode sampling
+                            if arglist.sync_sampling:
+                                inds = [random.randint(0, len(self.learners[0].replay_buffer._storage)-1) for i in range(arglist.batch_size)]
+                            else:
+                                inds = None
+
+                            for agent in self.learners:
+                                # if arglist.lstm:
+                                #     agent.preupdate(inds=inds)
+                                # else:
+                                agent.preupdate(inds)
+                            for agent in self.learners:
+                                loss = agent.update(self.learners)#, self.train_step)
+                                if loss is None: continue
+                        self.printConsole("Training round done")
+
+                    # save model, display training output
+                    if done and (len(self.episode_rewards) % arglist.save_rate == 0):
+                        U.save_state(arglist.save_dir, saver=self.saver)
+                        self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
+                            self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]), round(time.time()-self.t_start, 3)))
+                        self.printConsole("Agent Rewards: GK {}, D1 {}, D2 {}, F1 {}, F2 {}".format(
+                            np.mean(self.agent_rewards[0][-arglist.save_rate:]),
+                            np.mean(self.agent_rewards[1][-arglist.save_rate:]),
+                            np.mean(self.agent_rewards[2][-arglist.save_rate:]),
+                            np.mean(self.agent_rewards[3][-arglist.save_rate:]),
+                            np.mean(self.agent_rewards[4][-arglist.save_rate:])))
+                        self.t_start = time.time()
+                        # Keep track of final episode reward
+                        self.final_ep_rewards.append(np.mean(self.episode_rewards[-arglist.save_rate:]))
+                        for rew in self.agent_rewards:
+                            self.final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
+
+                        if self.arglist.tracking:
+                            for agent in self.learners:
+                                agent.tracker.save()
+
+
+            if arglist.actor_lstm:
+                # get critic input states
+                self.p_in_c_n, self.p_in_h_n = get_lstm_states('p', self.learners) # num_learners x 1 x 1 x 64
+            if arglist.critic_lstm:
+                self.q_in_c_n, self.q_in_h_n = get_lstm_states('q', self.learners) # num_learners x 1 x 1 x 64
+
+
+            # get action
+            self.action_n = [agent.action(obs) for agent, obs in zip(self.learners, obs_n)]
+            message, self.action_n = self.convert2action(self.action_n, frame.coordinates)
+            if arglist.critic_lstm:
+                # get critic output states
+                p_states = [self.p_in_c_n, self.p_in_h_n] if arglist.actor_lstm else []
+                update_critic_lstm(self.learners, obs_n, self.action_n, p_states)
+                self.q_out_c_n, self.q_out_h_n = get_lstm_states('q', self.learners) # num_learners x 1 x 1 x 64
+            if arglist.actor_lstm:
+                self.p_out_c_n, self.p_out_h_n = get_lstm_states('p', self.learners) # num_learners x 1 x 1 x 64
+
+            self.prev_obs_n = obs_n
+
+            self.replayBuffer.state_buffer.push(state)
+            self.replayBuffer.solution_buffer.push(solution)
+            self.replayBuffer.action_buffer.push(self.action_n)
+        else:
             # If an episode was finished, reset internal values
             if done:
-                self.new_episode = True
-                # reset trainers
+                # reset learners
                 if arglist.actor_lstm or arglist.critic_lstm:
-                    for agent in self.trainers:
+                    for agent in self.learners:
                         agent.reset_lstm()
-                if arglist.tracking:
-                    for agent in self.trainers:
-                        agent.tracker.reset()
-                self.episode_rewards.append(0)
-                for a in self.agent_rewards:
-                    a.append(0)
-                self.agent_info.append([[]])
-            else:
-                self.new_episode=False
 
-            # increment global step counter
-            self.train_step += 1
+            state = self.perception.get(frame)
+            solution = self.reasoning.get(frame, state)
 
-            # for benchmarking learned policies
-            if arglist.benchmark:
-                for i, info in enumerate(info_n):
-                    self.agent_info[-1][i].append(info_n['n'])
-                if self.train_step > arglist.benchmark_iters and done:
-                    file_name = arglist.benchmark_dir + arglist.exp_name + '.pkl'
-                    self.printConsole('Finished benchmarking, now saving...')
-                    with open(file_name, 'wb') as fp:
-                        pickle.dump(self.agent_info[:-1], fp)
-                    return
-            # otherwise training
-            else:
-                # update all trainers, if not in display or benchmark mode
-                loss = None
+            # get action
+            self.action_n = [agent.action(obs) for agent, obs in zip(self.learners, obs_n)]
+            message, self.action_n = self.convert2action(self.action_n, frame.coordinates)
 
-                if done and (len(self.episode_rewards) % 10 == 0):
-                    self.printConsole("Episodes Seen: {}, entering training...".format(len(self.episode_rewards)))
-                    for i in range(150):
-                        # get same episode sampling
-                        if arglist.sync_sampling:
-                            inds = [random.randint(0, len(self.trainers[0].replay_buffer._storage)-1) for i in range(arglist.batch_size)]
-                        else:
-                            inds = None
-
-                        for agent in self.trainers:
-                            # if arglist.lstm:
-                            #     agent.preupdate(inds=inds)
-                            # else:
-                            agent.preupdate(inds)
-                        for agent in self.trainers:
-                            loss = agent.update(self.trainers)#, self.train_step)
-                            if loss is None: continue
-                    self.printConsole("Training round done")
-
-                # save model, display training output
-                if done and (len(self.episode_rewards) % arglist.save_rate == 0):
-                    U.save_state(arglist.save_dir, saver=self.saver)
-                    self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
-                        self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]), round(time.time()-self.t_start, 3)))
-                    self.printConsole("Agent Rewards: GK {}, D1 {}, D2 {}, F1 {}, F2 {}".format(
-                        np.mean(self.agent_rewards[0][-arglist.save_rate:]),
-                        np.mean(self.agent_rewards[1][-arglist.save_rate:]),
-                        np.mean(self.agent_rewards[2][-arglist.save_rate:]),
-                        np.mean(self.agent_rewards[3][-arglist.save_rate:]),
-                        np.mean(self.agent_rewards[4][-arglist.save_rate:])))
-                    self.t_start = time.time()
-                    # Keep track of final episode reward
-                    self.final_ep_rewards.append(np.mean(self.episode_rewards[-arglist.save_rate:]))
-                    for rew in self.agent_rewards:
-                        self.final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
-
-                    if self.arglist.tracking:
-                        for agent in self.trainers:
-                            agent.tracker.save()
-
-
-        if arglist.actor_lstm:
-            # get critic input states
-            self.p_in_c_n, self.p_in_h_n = get_lstm_states('p', self.trainers) # num_trainers x 1 x 1 x 64
-        if arglist.critic_lstm:
-            self.q_in_c_n, self.q_in_h_n = get_lstm_states('q', self.trainers) # num_trainers x 1 x 1 x 64
-
-
-        # get action
-        self.action_n = [agent.action(obs) for agent, obs in zip(self.trainers, obs_n)]
-        message, self.action_n = self.convert2action(self.action_n, frame.coordinates)
-        if arglist.critic_lstm:
-            # get critic output states
-            p_states = [self.p_in_c_n, self.p_in_h_n] if arglist.actor_lstm else []
-            update_critic_lstm(self.trainers, obs_n, self.action_n, p_states)
-            self.q_out_c_n, self.q_out_h_n = get_lstm_states('q', self.trainers) # num_trainers x 1 x 1 x 64
-        if arglist.actor_lstm:
-            self.p_out_c_n, self.p_out_h_n = get_lstm_states('p', self.trainers) # num_trainers x 1 x 1 x 64
-
-        self.prev_obs_n = obs_n
-
-        # speeds = []
-        #
-        # for robot_id, action in enumerate(actions):
-        #     speeds += action2speed(action)
         self.set_speeds(message)
 
     def finish(self):
