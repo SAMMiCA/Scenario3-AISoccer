@@ -26,7 +26,7 @@ import pickle
 import random
 
 import sammica.misc.tf_util as U
-from sammica.network import mlp_model, lstm_fc_model
+from network import mlp_model, lstm_fc_model
 from sammica.misc.multi_discrete import MultiDiscrete
 
 # reset_reason
