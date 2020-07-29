@@ -12,12 +12,32 @@ ACTIVE = 4
 TOUCH = 5
 BALL_POSSESSION = 6
 
+# reset_reason
+NONE = 0
+GAME_START = 1
+SCORE_MYTEAM = 2
+SCORE_OPPONENT = 3
+GAME_END = 4
+DEADLOCK = 5
+GOALKICK = 6
+CORNERKICK = 7
+PENALTYKICK = 8
+HALFTIME = 9
+EPISODE_END = 10
+
 def get_reward(info, frame, replayBuffer):
     tmp_prev_frame = replayBuffer.frame_buffer.memory[-1]
     #############################################
-    _reward = simple_reward(info, frame, tmp_prev_frame)
+    # _reward = simple_reward(info, frame, tmp_prev_frame)
     #############################################
-    return _reward
+
+    if frame.reset_reason == SCORE_MYTEAM:
+        return np.array([1 for i in range(5)])
+    elif frame.reset_reason == SCORE_OPPONENT:
+        return np.array([-1 for i in range(5)])
+    else:
+        return np.array([0 for i in range(5)])
+    # return _reward
 
 def simple_reward(info, frame, tmp_prev_frame):
     reward = []

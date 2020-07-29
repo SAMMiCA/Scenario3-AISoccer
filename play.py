@@ -15,21 +15,21 @@ except ImportError as err:
 from sammica import memory, ReplayBuffer
 from sammica import perceptionSystem, reasoningSystem, learningSystem
 from sammica import action2speed
-from sammica.rewards import get_reward
 
+from aiwc_utils import go_to
+from rewards import get_reward
 from config import parse_args
+
 import numpy as np
 import tensorflow as tf
-import math
 import time
 import pickle
 import random
-import rmaddpg.misc.tf_util as U
-from rmaddpg.rmaddpg import _RMADDPGAgentTrainer
-from rmaddpg.network import mlp_model, lstm_fc_model
 
-from gym import spaces
-from rmaddpg.misc.multi_discrete import MultiDiscrete
+import sammica.misc.tf_util as U
+from sammica.rmaddpg import _RMADDPGAgentTrainer
+from sammica.network import mlp_model, lstm_fc_model
+from sammica.misc.multi_discrete import MultiDiscrete
 
 TRAINING = True
 
@@ -65,6 +65,15 @@ ACTIVE = 4
 TOUCH = 5
 BALL_POSSESSION = 6
 
+def get_trainers(num_agent, obs_shape_n, act_space_n, arglist):
+    trainers = []
+    trainer = _RMADDPGAgentTrainer
+
+    for i in range(num_agent):
+        trainers.append(trainer(
+            "agent_%d" % i,  mlp_model, lstm_fc_model, obs_shape_n, act_space_n, i, arglist,
+            local_q_func=(arglist.good_policy=='ddpg')))
+    return trainers
 
 def get_lstm_states(_type, trainers):
     if _type == 'p':
@@ -83,16 +92,6 @@ def update_critic_lstm(trainers, obs_n, action_n, p_states):
 
     for trainer in trainers:
         q_val, (trainer.q_c, trainer.q_h) = trainer.q_debug['q_values'](*(obs_n + action_n + q_c_n + q_h_n))
-
-def get_trainers(num_agent, obs_shape_n, act_space_n, arglist):
-    trainers = []
-    trainer = _RMADDPGAgentTrainer
-
-    for i in range(num_agent):
-        trainers.append(trainer(
-            "agent_%d" % i,  mlp_model, lstm_fc_model, obs_shape_n, act_space_n, i, arglist,
-            local_q_func=(arglist.good_policy=='ddpg')))
-    return trainers
 
 def create_seed(seed):
     random.seed(seed)
@@ -121,21 +120,21 @@ class player(Participant):
             if act[0] == 0:
                 control += [0, 0]
             elif act[0] == 1: #up
-                control += self.go_to(0, 2, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(0, 2, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             elif act[0] == 2: #right, up
-                control += self.go_to(1.414, 1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(1.414, 1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             elif act[0] == 3: #right
-                control += self.go_to(2, 0, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(2, 0, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             elif act[0] == 4: #right, down
-                control += self.go_to(1.414, -1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(1.414, -1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             elif act[0] == 5: #down
-                control += self.go_to(0, -2, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(0, -2, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             elif act[0] == 6: #left, down
-                control += self.go_to(-1.414, -1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(-1.414, -1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             elif act[0] == 7: #left
-                control += self.go_to(-2, 0, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(-2, 0, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             elif act[0] == 8: #left, up
-                control += self.go_to(-1.141, 1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
+                control += go_to(-1.141, 1.414, coordinates[MY_TEAM][id][TH], self.max_linear_velocity[id])
             else:
                 self.printConsole("PANIC!")
 
@@ -155,84 +154,6 @@ class player(Participant):
             one_hot_actions.append([one_hot_action])
 
         return msg, one_hot_actions
-
-
-    def go_to(self, dx, dy, th, maxvel):
-        scale, mult_lin, mult_ang = 1.4, 3.5, 0.4
-        damping = 0.35
-        ka = 0
-        sign = 1
-        # calculate how far the target position is from the robot
-        d_e = math.sqrt(math.pow(dx, 2) + math.pow(dy, 2))
-        # calculate how much the direction is off
-        desired_th = (math.pi / 2) if (dx == 0 and dy == 0) else math.atan2(dy, dx)
-        d_th = desired_th - th
-        while (d_th > math.pi):
-            d_th -= 2 * math.pi
-        while (d_th < -math.pi):
-            d_th += 2 * math.pi
-
-        # based on how far the target position is, set a parameter that
-        # decides how much importance should be put into changing directions
-        # farther the target is, less need to change directions fastly
-        if (d_e > 1):
-            ka = 17 / 90
-        elif (d_e > 0.5):
-            ka = 19 / 90
-        elif (d_e > 0.3):
-            ka = 21 / 90
-        elif (d_e > 0.2):
-            ka = 23 / 90
-        else:
-            ka = 25 / 90
-
-        # if the target position is at rear of the robot, drive backward instead
-        if (d_th > math.radians(95)):
-            d_th -= math.pi
-            sign = -1
-        elif (d_th < math.radians(-95)):
-            d_th += math.pi
-            sign = -1
-
-        # if the direction is off by more than 85 degrees,
-        # make a turn first instead of start moving toward the target
-        if (abs(d_th) > math.radians(85)):
-            left_wheel, right_wheel = self.trim_velocity(-mult_ang * d_th, mult_ang * d_th, maxvel)
-        # otherwise
-        else:
-            # scale the angular velocity further down if the direction is off by less than 40 degrees
-            if (d_e < 5 and abs(d_th) < math.radians(40)):
-                ka = 0.1
-            ka *= 4
-            # set the wheel velocity
-            # 'sign' determines the direction [forward, backward]
-            # 'scale' scales the overall velocity at which the robot is driving
-            # 'mult_lin' scales the linear velocity at which the robot is driving
-            # larger distance 'd_e' scales the base linear velocity higher
-            # 'damping' slows the linear velocity down
-            # 'mult_ang' and 'ka' scales the angular velocity at which the robot is driving
-            # larger angular difference 'd_th' scales the base angular velocity higher
-            left_wheel, right_wheel = self.trim_velocity(sign * scale * (mult_lin * (
-                                                1 / (1 + math.exp(-3 * d_e)) - damping) - mult_ang * ka * d_th),
-                                    sign * scale * (mult_lin * (
-                                                1 / (1 + math.exp(-3 * d_e)) - damping) + mult_ang * ka * d_th), maxvel)
-        return [left_wheel, right_wheel]
-
-    def trim_velocity(self, left_wheel, right_wheel, maxvel):
-        multiplier = 1
-
-        # wheel velocities need to be scaled so that none of wheels exceed the maximum velocity available
-        # otherwise, the velocity above the limit will be set to the max velocity by the simulation program
-        # if that happens, the velocity ratio between left and right wheels will be changed that the robot may not execute
-        # turning actions correctly.
-        if (abs(left_wheel) > maxvel or abs(right_wheel) > maxvel):
-            if (abs(left_wheel) > abs(right_wheel)):
-                multiplier = maxvel / abs(left_wheel)
-            else:
-                multiplier = maxvel / abs(right_wheel)
-
-        return left_wheel*multiplier, right_wheel*multiplier
-
 
     def get_obs(self, frame):
         state = []
