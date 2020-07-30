@@ -13,9 +13,7 @@ import os
 
 class InfoTracker:
     def __init__(self, agent_name,  arglist):
-        self.agent_name = agent_name
-        self.arglist = arglist
-        self.base_filename = "../../examples/ai28_player/tracker_information/{}_{}_".format(self.arglist.commit_num, self.agent_name)
+        self.base_filename = "../../examples/ai28_player/tracker_information/{}_{}_".format(arglist.commit_num, agent_name)
 
         keys = ["ag_reward", # every episode
                 "team_dist_reward", # every episode

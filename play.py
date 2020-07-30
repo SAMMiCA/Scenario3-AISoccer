@@ -227,7 +227,7 @@ class player(Participant):
         # Load previous results, if necessary
         if arglist.load_dir == "":
             arglist.load_dir = arglist.save_dir
-        if arglist.restore or arglist.benchmark:
+        if arglist.restore:
             self.printConsole('Loading previous state...')
             U.load_state(arglist.load_dir)
 
@@ -235,7 +235,6 @@ class player(Participant):
         self.agent_rewards = [[0.0] for _ in range(self.num_agent)]  # individual agent reward
         self.final_ep_rewards = []  # sum of rewards for training curve
         self.final_ep_ag_rewards = []  # agent rewards for training curve
-        self.agent_info = [[[]]]  # placeholder for benchmarking info
         self.saver = tf.train.Saver()
         self.train_step = 0
         self.t_start = time.time()
@@ -326,67 +325,54 @@ class player(Participant):
                     self.episode_rewards.append(0)
                     for a in self.agent_rewards:
                         a.append(0)
-                    self.agent_info.append([[]])
                 else:
                     self.new_episode=False
 
                 # increment global step counter
                 self.train_step += 1
 
-                # for benchmarking learned policies
-                if arglist.benchmark:
-                    for i, info in enumerate(info_n):
-                        self.agent_info[-1][i].append(info_n['n'])
-                    if self.train_step > arglist.benchmark_iters and done:
-                        file_name = arglist.benchmark_dir + arglist.exp_name + '.pkl'
-                        self.printConsole('Finished benchmarking, now saving...')
-                        with open(file_name, 'wb') as fp:
-                            pickle.dump(self.agent_info[:-1], fp)
-                        return
-                # otherwise training
-                else:
-                    # update all learners, if not in display or benchmark mode
-                    loss = None
+                # update all learners
+                loss = None
 
-                    if done and (len(self.episode_rewards) % 10 == 0):
-                        self.printConsole("Episodes Seen: {}, entering training...".format(len(self.episode_rewards)))
-                        for i in range(150):
-                            # get same episode sampling
-                            if arglist.sync_sampling:
-                                inds = [random.randint(0, len(self.learners[0].replay_buffer._storage)-1) for i in range(arglist.batch_size)]
-                            else:
-                                inds = None
+                if done and (len(self.episode_rewards) % 10 == 0):
+                    self.printConsole("Episodes Seen: {}, entering training...".format(len(self.episode_rewards)))
+                    for i in range(150):
+                        # get same episode sampling
+                        if arglist.sync_sampling:
+                            inds = [random.randint(0, len(self.learners[0].replay_buffer._storage)-1) for i in range(arglist.batch_size)]
+                        else:
+                            inds = None
 
-                            for agent in self.learners:
-                                # if arglist.lstm:
-                                #     agent.preupdate(inds=inds)
-                                # else:
-                                agent.preupdate(inds)
-                            for agent in self.learners:
-                                loss = agent.update(self.learners)#, self.train_step)
-                                if loss is None: continue
-                        self.printConsole("Training round done")
+                        for agent in self.learners:
+                            # if arglist.lstm:
+                            #     agent.preupdate(inds=inds)
+                            # else:
+                            agent.preupdate(inds)
+                        for agent in self.learners:
+                            loss = agent.update(self.learners)#, self.train_step)
+                            if loss is None: continue
+                    self.printConsole("Training round done")
 
-                    # save model, display training output
-                    if done and (len(self.episode_rewards) % arglist.save_rate == 0):
-                        U.save_state(arglist.save_dir, saver=self.saver)
-                        self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
-                            self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]), round(time.time()-self.t_start, 3)))
-                        self.printConsole("Agent Rewards: GK {}, D1 {}, D2 {}, F1 {}, F2 {}".format(
-                            np.mean(self.agent_rewards[0][-arglist.save_rate:]),
-                            np.mean(self.agent_rewards[1][-arglist.save_rate:]),
-                            np.mean(self.agent_rewards[2][-arglist.save_rate:]),
-                            np.mean(self.agent_rewards[3][-arglist.save_rate:]),
-                            np.mean(self.agent_rewards[4][-arglist.save_rate:])))
-                        self.t_start = time.time()
-                        # Keep track of final episode reward
-                        self.final_ep_rewards.append(np.mean(self.episode_rewards[-arglist.save_rate:]))
-                        for rew in self.agent_rewards:
-                            self.final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
+                # save model, display training output
+                if done and (len(self.episode_rewards) % arglist.save_rate == 0):
+                    U.save_state(arglist.save_dir, saver=self.saver)
+                    self.printConsole("steps: {}, episodes: {}, mean episode reward: {}, time: {}".format(
+                        self.train_step, len(self.episode_rewards), np.mean(self.episode_rewards[-arglist.save_rate:]), round(time.time()-self.t_start, 3)))
+                    self.printConsole("Agent Rewards: GK {}, D1 {}, D2 {}, F1 {}, F2 {}".format(
+                        np.mean(self.agent_rewards[0][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[1][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[2][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[3][-arglist.save_rate:]),
+                        np.mean(self.agent_rewards[4][-arglist.save_rate:])))
+                    self.t_start = time.time()
+                    # Keep track of final episode reward
+                    self.final_ep_rewards.append(np.mean(self.episode_rewards[-arglist.save_rate:]))
+                    for rew in self.agent_rewards:
+                        self.final_ep_ag_rewards.append(np.mean(rew[-arglist.save_rate:]))
 
-                        if self.arglist.tracking:
-                            for agent in self.learners:
-                                agent.tracker.save()
+                    if self.arglist.tracking:
+                        for agent in self.learners:
+                            agent.tracker.save()
 
 
             if arglist.actor_lstm:

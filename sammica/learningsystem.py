@@ -35,10 +35,6 @@ class learningSystem():
         for i in range(self.n):
             obs_ph_n.append(U.BatchInput(obs_shape_n[i], name="observation"+str(i)).get())
 
-        # LSTM placeholders
-        p_res = 7
-        q_res = 1
-
         # set up initial states
         self.q_c, self.q_h = create_init_state(num_batches=1, len_sequence=args.num_units)
         self.p_c, self.p_h = create_init_state(num_batches=1, len_sequence=args.num_units)
