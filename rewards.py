@@ -28,16 +28,16 @@ EPISODE_END = 10
 def get_reward(info, frame, replayBuffer):
     tmp_prev_frame = replayBuffer.frame_buffer.memory[-1]
     #############################################
-    # _reward = simple_reward(info, frame, tmp_prev_frame)
+    _reward = simple_reward(info, frame, tmp_prev_frame)
     #############################################
 
-    if frame.reset_reason == SCORE_MYTEAM:
-        return np.array([1 for i in range(5)])
-    elif frame.reset_reason == SCORE_OPPONENT:
-        return np.array([-1 for i in range(5)])
-    else:
-        return np.array([0 for i in range(5)])
-    # return _reward
+    # if frame.reset_reason == SCORE_MYTEAM:
+    #     return np.array([1 for i in range(5)])
+    # elif frame.reset_reason == SCORE_OPPONENT:
+    #     return np.array([-1 for i in range(5)])
+    # else:
+    #     return np.array([0 for i in range(5)])
+    return _reward
 
 def simple_reward(info, frame, tmp_prev_frame):
     reward = []
@@ -46,9 +46,9 @@ def simple_reward(info, frame, tmp_prev_frame):
     goalkeeper = frame.coordinates[MY_TEAM][0]
     if (goalkeeper[ACTIVE]) :
         if (goalkeeper[X] >= -info['field'][X]/2) and (goalkeeper[X] <= -info['field'][X]/2 + info['penalty_area'][X]) and (abs(goalkeeper[Y]) <= info['penalty_area'][Y]/2):
-            reward.append(0.5)
+            reward.append(1)
         else:
-            reward.append(-0.5)
+            reward.append(-1)
     else:
         reward.append(0)
 
@@ -60,12 +60,12 @@ def simple_reward(info, frame, tmp_prev_frame):
     d2g = np.array([-1, 1.5])
 
     if (defender_1[ACTIVE]):
-        reward.append(1 - 0.5*np.linalg.norm(d1g - defender_1[X:Z]))
+        reward.append(2 - np.linalg.norm(d1g - defender_1[X:Z]))
     else:
         reward.append(0)
 
     if (defender_2[ACTIVE]):
-        reward.append(1 - 0.5*np.linalg.norm(d2g - defender_2[X:Z]))
+        reward.append(2 - np.linalg.norm(d2g - defender_2[X:Z]))
     else:
         reward.append(0)
 

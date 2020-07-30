@@ -191,9 +191,6 @@ class player(Participant):
         self.num_agent = info['number_of_robots']
         self.max_linear_velocity = info['max_linear_velocity']
 
-        x_lim = 0.5 * (info['field'][X] + info['goal_area'][X])
-        y_lim = 0.5 * (info['field'][Y] + info['goal_area'][Y])
-
         if arglist.training :
             buffer_size = 1e6
             self.replayBuffer = ReplayBuffer(buffer_size)
@@ -267,8 +264,8 @@ class player(Participant):
         if arglist.training:
             if len(self.replayBuffer.frame_buffer) > 0:
                 rew_agent = get_reward(self.info, frame, self.replayBuffer)
-                rew_n = np.array([sum(rew_agent)/5 for i in range(self.num_agent)])
-                self.replayBuffer.reward_buffer.push(rew_n)
+                rew = sum(rew_agent)/self.num_agent
+                self.replayBuffer.reward_buffer.push(rew)
             self.replayBuffer.frame_buffer.push(frame)
 
             # Update perception module (if necessary)
@@ -278,8 +275,6 @@ class player(Participant):
             solution = self.reasoning.update(frame, state)
 
             # Update learning module
-            done_n = [done for i in range(self.num_agent)]
-
             if self.first:
                 self.first = False
             else:
@@ -287,26 +282,26 @@ class player(Participant):
                 for i, agent in enumerate(self.learners):
                     # do this every iteration
                     if arglist.critic_lstm and arglist.actor_lstm:
-                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                        obs_n[i], done_n[i], # terminal,
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew,
+                                        obs_n[i], done, # terminal,
                                         self.p_in_c_n[i][0], self.p_in_h_n[i][0],
                                         self.p_out_c_n[i][0], self.p_out_h_n[i][0],
                                         self.q_in_c_n[i][0], self.q_in_h_n[i][0],
                                         self.q_out_c_n[i][0], self.q_out_h_n[i][0], self.new_episode)
                     elif arglist.critic_lstm:
-                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                        obs_n[i], done_n[i], # terminal,
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew,
+                                        obs_n[i], done, # terminal,
                                         self.q_in_c_n[i][0], self.q_in_h_n[i][0],
                                         self.q_out_c_n[i][0], self.q_out_h_n[i][0],self.new_episode)
                     elif arglist.actor_lstm:
-                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                        obs_n[i], done_n[i], # terminal,
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew,
+                                        obs_n[i], done, # terminal,
                                         self.p_in_c_n[i][0], self.p_in_h_n[i][0],
                                         self.p_out_c_n[i][0], self.p_out_h_n[i][0],
                                         self.new_episode)
                     else:
-                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew_n[i],
-                                        obs_n[i], done_n[i], # terminal,
+                        agent.experience(self.prev_obs_n[i], self.action_n[i], rew,
+                                        obs_n[i], done, # terminal,
                                         self.new_episode)
 
                 # Adding rewards
@@ -314,9 +309,9 @@ class player(Participant):
                     for i, a in enumerate(self.learners):
                         a.tracker.record_information("ag_reward", rew_agent[i])
 
-                for i, rew in enumerate(rew_agent):
-                    self.episode_rewards[-1] += rew/self.num_agent
-                    self.agent_rewards[i][-1] += rew
+                for i, r in enumerate(rew_agent):
+                    self.episode_rewards[-1] += r/self.num_agent
+                    self.agent_rewards[i][-1] += r
 
                 # If an episode was finished, reset internal values
                 if done:
