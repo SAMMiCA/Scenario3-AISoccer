@@ -13,7 +13,7 @@ AIWC is a 5:5 robot soccer game where each team is comprised of one goalkeeper, 
 
 ## Dataset download
 
-[AIWC_500_games.zip](https://kaistackr-my.sharepoint.com/:u:/g/personal/gm_lee_kaist_ac_kr/EeSrUXT_azlGrxnOMap_wJABzyhJJcadqHcgCt-jqeRAew?e=gitUI8)
+[AIWC_500_games.zip](https://kaistackr-my.sharepoint.com/:u:/g/personal/gm_lee_kaist_ac_kr/EeSrUXT_azlGrxnOMap_wJABzyhJJcadqHcgCt-jqeRAew?e=gitUI8)(2.0GB)
 
 ### Format
 
